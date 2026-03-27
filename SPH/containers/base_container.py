@@ -11,6 +11,12 @@ class BaseContainer:
         self.cfg = config
         self.GGUI = GGUI
         self.total_time = 0.0
+        self.initial_temperature = self.cfg.get_cfg("initialTemperature")
+        if self.initial_temperature is None:
+            self.initial_temperature = 300.0
+        self.boundary_temperature = self.cfg.get_cfg("boundaryTemperature")
+        if self.boundary_temperature is None:
+            self.boundary_temperature = self.initial_temperature
 
         self.domain_start = np.array([0.0, 0.0, 0.0])
         self.domain_start = np.array(self.cfg.get_cfg("domainStart"))
@@ -143,6 +149,7 @@ class BaseContainer:
         self.particle_masses = ti.field(dtype=float, shape=self.particle_max_num)
         self.particle_densities = ti.field(dtype=float, shape=self.particle_max_num)
         self.particle_pressures = ti.field(dtype=float, shape=self.particle_max_num)
+        self.particle_temperatures = ti.field(dtype=float, shape=self.particle_max_num)
         self.particle_materials = ti.field(dtype=int, shape=self.particle_max_num)
         self.particle_colors = ti.Vector.field(3, dtype=int, shape=self.particle_max_num)
         self.particle_is_dynamic = ti.field(dtype=int, shape=self.particle_max_num)
@@ -173,6 +180,7 @@ class BaseContainer:
         self.particle_masses_buffer = ti.field(dtype=float, shape=self.particle_max_num)
         self.particle_densities_buffer = ti.field(dtype=float, shape=self.particle_max_num)
         self.particle_materials_buffer = ti.field(dtype=int, shape=self.particle_max_num)
+        self.particle_temperatures_buffer = ti.field(dtype=float, shape=self.particle_max_num)
         self.particle_colors_buffer = ti.Vector.field(3, dtype=int, shape=self.particle_max_num)
         self.is_dynamic_buffer = ti.field(dtype=int, shape=self.particle_max_num)
 
@@ -410,6 +418,9 @@ class BaseContainer:
         self.particle_rest_volumes[p] = self.V0
         self.particle_masses[p] = self.V0 * density
         self.particle_pressures[p] = pressure
+        self.particle_temperatures[p] = self.initial_temperature
+        if material == self.material_rigid:
+            self.particle_temperatures[p] = self.boundary_temperature
         self.particle_materials[p] = material
         self.particle_is_dynamic[p] = is_dynamic
         self.particle_colors[p] = color
@@ -524,6 +535,7 @@ class BaseContainer:
             self.particle_rest_volumes_buffer[new_index] = self.particle_rest_volumes[p_i]
             self.particle_masses_buffer[new_index] = self.particle_masses[p_i]
             self.particle_densities_buffer[new_index] = self.particle_densities[p_i]
+            self.particle_temperatures_buffer[new_index] = self.particle_temperatures[p_i]
             self.particle_materials_buffer[new_index] = self.particle_materials[p_i]
             self.particle_colors_buffer[new_index] = self.particle_colors[p_i]
             self.is_dynamic_buffer[new_index] = self.particle_is_dynamic[p_i]
@@ -537,6 +549,7 @@ class BaseContainer:
             self.particle_rest_volumes[p_i] = self.particle_rest_volumes_buffer[p_i]
             self.particle_masses[p_i] = self.particle_masses_buffer[p_i]
             self.particle_densities[p_i] = self.particle_densities_buffer[p_i]
+            self.particle_temperatures[p_i] = self.particle_temperatures_buffer[p_i]
             self.particle_materials[p_i] = self.particle_materials_buffer[p_i]
             self.particle_colors[p_i] = self.particle_colors_buffer[p_i]
             self.particle_is_dynamic[p_i] = self.is_dynamic_buffer[p_i]
@@ -598,14 +611,30 @@ class BaseContainer:
 
     def dump(self, obj_id):
         np_object_id = self.particle_object_ids.to_numpy()
-        mask = (np_object_id == obj_id).nonzero()
+        indices = np.where(np_object_id == obj_id)[0]
 
-        np_x = self.particle_positions.to_numpy()[mask]
-        np_v = self.particle_velocities.to_numpy()[mask]
+        np_x = self.particle_positions.to_numpy()[indices]
+        np_v = self.particle_velocities.to_numpy()[indices]
+        np_a = self.particle_accelerations.to_numpy()[indices]
+        np_rho = self.particle_densities.to_numpy()[indices]
+        np_p = self.particle_pressures.to_numpy()[indices]
+        np_t = self.particle_temperatures.to_numpy()[indices]
+        np_m = self.particle_masses.to_numpy()[indices]
+        np_vol = self.particle_rest_volumes.to_numpy()[indices]
+        np_mat = self.particle_materials.to_numpy()[indices]
+        np_dynamic = self.particle_is_dynamic.to_numpy()[indices]
 
         return {
             'position': np_x,
-            'velocity': np_v
+            'velocity': np_v,
+            'acceleration': np_a,
+            'rho': np_rho,
+            'p': np_p,
+            'temperature': np_t,
+            'm': np_m,
+            'rest_volume': np_vol,
+            'material': np_mat,
+            'is_dynamic': np_dynamic
         }
     
     def load_rigid_body(self, rigid_body, pitch=None):

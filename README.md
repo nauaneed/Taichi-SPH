@@ -184,6 +184,68 @@ For a quick start, try the following command and make sure you turn on the expor
 python run_simulation.py --scene ./data/scenes/dragon_bath_dfsph.json
 ```
 
+To export fluid particles as `.h5` with matching `.xdmf` metadata for ParaView/VisIt, set `"exportHdf5Xdmf": true` inside `Configuration` in your scene json, or force it from CLI:
+
+```bash
+python run_simulation.py --scene_file ./data/scenes/dragon_bath_dfsph.json --export_hdf5_xdmf
+```
+
+This writes `particles.h5` and `particles.xdmf` in each exported frame folder.
+
+For thermal simulations, you can enable a first-pass SPH energy equation (temperature diffusion plus source term) in scene configuration:
+
+```json
+"solveEnergyEquation": true,
+"initialTemperature": 300.0,
+"boundaryTemperature": 300.0,
+"specificHeatCapacity": 1.0,
+"thermalConductivity": 0.6,
+"heatSource": 0.0
+```
+
+Notes:
+
++ `initialTemperature` and `boundaryTemperature` are in $\mathrm{K}$.
++ `specificHeatCapacity` is $c_p$ in $\mathrm{J/(kg\cdot K)}$.
++ `thermalConductivity` is $k$ in $\mathrm{W/(m\cdot K)}$.
++ `heatSource` is a uniform volumetric source written in temperature form, $\mathrm{K/s}$.
+
+SPH discretization currently used for the energy equation (Cleary-Monaghan form):
+
+Advection is implicit in the Lagrangian particle motion, and temperature is advanced with explicit Euler:
+
+$$
+T_i^{n+1} = T_i^n + \Delta t\,\left(\dot{T}_i\right)
+$$
+
+with
+
+$$
+c_{p,i}\,\frac{dT_i}{dt} = \sum_j \frac{m_j}{\rho_i\rho_j}
+\frac{4k_i k_j}{k_i + k_j}\,(T_i-T_j)\,F_{ij} + c_{p,i}\,Q
+$$
+
+where:
+
++ $k_i,k_j$ are thermal conductivities.
++ $Q$ is `heatSource`.
++ $m_j, \rho_j$ are neighbor mass and density.
++ $h$ is SPH support radius (`dh`).
++ $F_{ij}=\dfrac{(\mathbf{x}_i-\mathbf{x}_j)\cdot\nabla W_{ij}}{\|\mathbf{x}_i-\mathbf{x}_j\|^2 + 0.001\,h^2}$.
++ $\nabla W_{ij}$ is the cubic-spline kernel gradient already used by the solver.
+
+This diffusion update is applied to fluid particles each step when `solveEnergyEquation=true`.
+
+The exported `.h5` now also includes per-particle `temperature`.
+
+If you want a single top-level temporal XDMF index for ParaView (one file referencing all frame folders), run:
+
+```bash
+python build_temporal_xdmf.py --input_dir ./dragon_bath_dfsph_output
+```
+
+This generates `particles_temporal.xdmf` inside the output directory.
+
 To visualize the results, you can run the following command to make the images into a video. Those raw images is derived from Taichi GGUI API.
 
 ```bash

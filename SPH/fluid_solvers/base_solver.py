@@ -30,6 +30,18 @@ class BaseSolver():
         self.density_0 = 1000.0  
         self.density_0 = self.container.cfg.get_cfg("density0")
         self.surface_tension = 0.01
+        self.solve_energy_equation = self.container.cfg.get_cfg("solveEnergyEquation")
+        if self.solve_energy_equation is None:
+            self.solve_energy_equation = False
+        self.thermal_conductivity = self.container.cfg.get_cfg("thermalConductivity")
+        if self.thermal_conductivity is None:
+            self.thermal_conductivity = 0.0
+        self.specific_heat_capacity = self.container.cfg.get_cfg("specificHeatCapacity")
+        if self.specific_heat_capacity is None:
+            self.specific_heat_capacity = 1.0
+        self.heat_source = self.container.cfg.get_cfg("heatSource")
+        if self.heat_source is None:
+            self.heat_source = 0.0
 
         self.dt = ti.field(float, shape=())
         self.dt[None] = 1e-4
@@ -198,6 +210,44 @@ class BaseSolver():
             self.implicit_viscosity_solve()
         else:
             raise NotImplementedError(f"viscosity method {self.viscosity_method} not implemented")
+
+        self.solve_energy_equation_step()
+
+    @ti.kernel
+    def update_fluid_temperature(self):
+        for p_i in range(self.container.particle_num[None]):
+            if self.container.particle_materials[p_i] == self.container.material_fluid:
+                dT_dt = self.heat_source
+                self.container.for_all_neighbors(p_i, self.compute_temperature_diffusion_task, dT_dt)
+                self.container.particle_temperatures[p_i] += self.dt[None] * dT_dt
+
+    @ti.func
+    def compute_temperature_diffusion_task(self, p_i, p_j, ret: ti.template()):
+        pos_i = self.container.particle_positions[p_i]
+        pos_j = self.container.particle_positions[p_j]
+        R = pos_i - pos_j
+        grad_ij = self.kernel_gradient(R)
+        denom = R.norm_sqr() + 0.001 * self.container.dh * self.container.dh
+        f_ab = ti.math.dot(R, grad_ij) / denom
+
+        rho_i = ti.max(self.container.particle_densities[p_i], 1e-8)
+        rho_j = ti.max(self.container.particle_densities[p_j], 1e-8)
+        temp_i = self.container.particle_temperatures[p_i]
+        temp_j = self.container.particle_temperatures[p_j]
+
+        c_p_i = self.specific_heat_capacity
+        k_i = self.thermal_conductivity
+        k_j = self.thermal_conductivity
+
+        k_harmonic = 4.0 * k_i * k_j / (k_i + k_j + 1e-12)
+        conduction = self.container.particle_masses[p_j] / (rho_i * rho_j)
+        conduction *= k_harmonic / c_p_i
+        conduction *= (temp_i - temp_j) * f_ab
+        ret += conduction
+
+    def solve_energy_equation_step(self):
+        if self.solve_energy_equation and self.thermal_conductivity > 0.0:
+            self.update_fluid_temperature()
         
     @ti.kernel
     def compute_gravity_acceleration(self):
