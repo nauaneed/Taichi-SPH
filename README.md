@@ -200,7 +200,23 @@ For thermal simulations, you can enable a first-pass SPH energy equation (temper
 "boundaryTemperature": 300.0,
 "specificHeatCapacity": 1.0,
 "thermalConductivity": 0.6,
-"heatSource": 0.0
+"heatSource": 0.0,
+"enableVftViscosity": false,
+"vftA": 3.0,
+"vftB": 1000.0,
+"vftT0": -500.0,
+"vftViscosityMin": 1000.0,
+"vftViscosityMax": 50000.0,
+"sigmoidTemperatureProfileEnabled": false,
+"sigmoidTemperatureMin": 300.0,
+"sigmoidTemperatureMax": 1500.0,
+"sigmoidCenterY": 25.0,
+"sigmoidWidth": 1.5,
+"sigmoidRegionCenter": [1.25, 25.0, 0.6],
+"sigmoidRegionHalfSize": [0.1, 3.0, 0.1],
+"sigmoidStartTime": 0.0,
+"sigmoidEndTime": -1.0,
+"sigmoidRampTime": 0.0
 ```
 
 Notes:
@@ -209,6 +225,14 @@ Notes:
 + `specificHeatCapacity` is $c_p$ in $\mathrm{J/(kg\cdot K)}$.
 + `thermalConductivity` is $k$ in $\mathrm{W/(m\cdot K)}$.
 + `heatSource` is a uniform volumetric source written in temperature form, $\mathrm{K/s}$.
++ `enableVftViscosity` enables temperature-dependent viscosity using the VFT model.
++ `vftA`, `vftB`, and `vftT0` define the VFT law parameters.
++ `vftViscosityMin` and `vftViscosityMax` clamp per-particle viscosity to a stable range.
++ `sigmoidTemperatureProfileEnabled` turns on a direct temperature setter in a configurable region.
++ `sigmoidTemperatureMin` / `sigmoidTemperatureMax` are low/high temperatures (in $\mathrm{K}$) of the sigmoid profile.
++ `sigmoidCenterY` and `sigmoidWidth` control the transition location and sharpness in the y direction.
++ `sigmoidRegionCenter` and `sigmoidRegionHalfSize` define the box region where the profile is enforced.
++ `sigmoidStartTime`, `sigmoidEndTime`, and `sigmoidRampTime` control activation timing and smooth ramp-in/out.
 
 SPH discretization currently used for the energy equation (Cleary-Monaghan form):
 
@@ -236,7 +260,31 @@ where:
 
 This diffusion update is applied to fluid particles each step when `solveEnergyEquation=true`.
 
+When `sigmoidTemperatureProfileEnabled=true`, the solver also enforces a direct profile in the configured box:
+
+$$
+T_{\text{target}}(y) = T_{\min} + \left(T_{\max}-T_{\min}\right)\,\frac{1}{1 + \exp\left(\frac{y-y_c}{w}\right)}
+$$
+
+This increases temperature toward $-y$ (lower y) and is useful for prescribing furnace-like thermal zones without volumetric source tuning.
+
 The exported `.h5` now also includes per-particle `temperature`.
+
+Viscosity is now stored as a per-particle property (`viscosity`) and initialized from scene config defaults:
+
++ fluid particles use `viscosity`
++ rigid/boundary particles use `viscosity_b`
+
+Current solver paths read this per-particle field directly, which prepares the codebase for temperature-dependent viscosity updates.
+
+When `enableVftViscosity=true`, fluid-particle viscosity is updated from temperature each step using
+
+$$
+\log_{10}(\mu) = A + \frac{B}{T - T_0}
+$$
+
+where $A$ is `vftA`, $B$ is `vftB`, $T_0$ is `vftT0`, and $\mu$ is clamped to
+[`vftViscosityMin`, `vftViscosityMax`].
 
 If you want a single top-level temporal XDMF index for ParaView (one file referencing all frame folders), run:
 

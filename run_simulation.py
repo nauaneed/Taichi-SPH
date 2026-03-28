@@ -44,6 +44,7 @@ def export_hdf5_xdmf(frame_dir, frame_idx, sim_time, fluid_data):
             grp.create_dataset("rho", data=obj_data["rho"].astype(np.float32), compression="gzip")
             grp.create_dataset("p", data=obj_data["p"].astype(np.float32), compression="gzip")
             grp.create_dataset("temperature", data=obj_data["temperature"].astype(np.float32), compression="gzip")
+            grp.create_dataset("viscosity", data=obj_data["viscosity"].astype(np.float32), compression="gzip")
             grp.create_dataset("m", data=obj_data["m"].astype(np.float32), compression="gzip")
             grp.create_dataset("time", data=np.full(np_pos.shape[0], sim_time, dtype=np.float32), compression="gzip")
             grp.create_dataset("rest_volume", data=obj_data["rest_volume"].astype(np.float32), compression="gzip")
@@ -82,6 +83,11 @@ def export_hdf5_xdmf(frame_dir, frame_idx, sim_time, fluid_data):
             "        <Attribute Name=\"temperature\" AttributeType=\"Scalar\" Center=\"Node\">",
             f"          <DataItem Dimensions=\"{n_particles}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">",
             f"            particles.h5:/object_{body_id}/temperature",
+            "          </DataItem>",
+            "        </Attribute>",
+            "        <Attribute Name=\"viscosity\" AttributeType=\"Scalar\" Center=\"Node\">",
+            f"          <DataItem Dimensions=\"{n_particles}\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">",
+            f"            particles.h5:/object_{body_id}/viscosity",
             "          </DataItem>",
             "        </Attribute>",
             "        <Attribute Name=\"m\" AttributeType=\"Scalar\" Center=\"Node\">",

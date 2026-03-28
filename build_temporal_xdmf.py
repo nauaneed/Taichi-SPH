@@ -102,8 +102,17 @@ def build_temporal_xdmf(input_dir, output_file):
                     f"              {h5_rel}:/{obj_name}/acceleration",
                     "            </DataItem>",
                     "          </Attribute>",
-                    "        </Grid>",
                 ])
+
+                lines.extend([
+                    "          <Attribute Name=\"viscosity\" AttributeType=\"Scalar\" Center=\"Node\">",
+                    f"            <DataItem Dimensions=\"{n_particles} 1\" NumberType=\"Float\" Precision=\"4\" Format=\"HDF\">",
+                    f"              {h5_rel}:/{obj_name}/viscosity",
+                    "            </DataItem>",
+                    "          </Attribute>",
+                ])
+
+                lines.append("        </Grid>")
 
             lines.append("      </Grid>")
 
