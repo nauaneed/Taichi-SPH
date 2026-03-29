@@ -69,58 +69,33 @@ class BaseSolver():
         if self.heat_source is None:
             self.heat_source = 0.0
 
-        self.sigmoid_temperature_profile_enabled = self.container.cfg.get_cfg("sigmoidTemperatureProfileEnabled")
-        if self.sigmoid_temperature_profile_enabled is None:
-            self.sigmoid_temperature_profile_enabled = False
+        self.sinusoidal_temperature_profile_enabled = self.container.cfg.get_cfg("sinusoidalTemperatureProfileEnabled")
+        if self.sinusoidal_temperature_profile_enabled is None:
+            self.sinusoidal_temperature_profile_enabled = False
 
-        self.sigmoid_temperature_min = self.container.cfg.get_cfg("sigmoidTemperatureMin")
-        if self.sigmoid_temperature_min is None:
-            self.sigmoid_temperature_min = self.container.cfg.get_cfg("boundaryTemperature")
-        if self.sigmoid_temperature_min is None:
-            self.sigmoid_temperature_min = 300.0
+        self.sinusoidal_temperature_min = self.container.cfg.get_cfg("sinusoidalTemperatureMin")
+        if self.sinusoidal_temperature_min is None:
+            self.sinusoidal_temperature_min = self.container.cfg.get_cfg("boundaryTemperature")
+        if self.sinusoidal_temperature_min is None:
+            self.sinusoidal_temperature_min = 300.0
 
-        self.sigmoid_temperature_max = self.container.cfg.get_cfg("sigmoidTemperatureMax")
-        if self.sigmoid_temperature_max is None:
-            self.sigmoid_temperature_max = self.container.cfg.get_cfg("initialTemperature")
-        if self.sigmoid_temperature_max is None:
-            self.sigmoid_temperature_max = self.sigmoid_temperature_min
+        self.sinusoidal_temperature_max = self.container.cfg.get_cfg("sinusoidalTemperatureMax")
+        if self.sinusoidal_temperature_max is None:
+            self.sinusoidal_temperature_max = self.container.cfg.get_cfg("initialTemperature")
+        if self.sinusoidal_temperature_max is None:
+            self.sinusoidal_temperature_max = self.sinusoidal_temperature_min
 
-        self.sigmoid_center_y = self.container.cfg.get_cfg("sigmoidCenterY")
-        if self.sigmoid_center_y is None:
-            self.sigmoid_center_y = 0.5 * (
+        self.sinusoidal_center_y = self.container.cfg.get_cfg("sinusoidalCenterY")
+        if self.sinusoidal_center_y is None:
+            self.sinusoidal_center_y = 0.5 * (
                 self.container.domain_start[1] + self.container.domain_end[1]
             )
 
-        self.sigmoid_width = self.container.cfg.get_cfg("sigmoidWidth")
-        if self.sigmoid_width is None:
-            self.sigmoid_width = 1.0
+        self.sinusoidal_width = self.container.cfg.get_cfg("sinusoidalWidth")
+        if self.sinusoidal_width is None:
+            self.sinusoidal_width = 1.0
 
-        self.sigmoid_start_time = self.container.cfg.get_cfg("sigmoidStartTime")
-        if self.sigmoid_start_time is None:
-            self.sigmoid_start_time = 0.0
 
-        self.sigmoid_end_time = self.container.cfg.get_cfg("sigmoidEndTime")
-        if self.sigmoid_end_time is None:
-            self.sigmoid_end_time = -1.0
-
-        self.sigmoid_ramp_time = self.container.cfg.get_cfg("sigmoidRampTime")
-        if self.sigmoid_ramp_time is None:
-            self.sigmoid_ramp_time = 0.0
-
-        region_center = self.container.cfg.get_cfg("sigmoidRegionCenter")
-        if region_center is None:
-            region_center = 0.5 * (self.container.domain_start + self.container.domain_end)
-        region_center = np.array(region_center, dtype=np.float32)
-
-        region_half_size = self.container.cfg.get_cfg("sigmoidRegionHalfSize")
-        if region_half_size is None:
-            region_half_size = 0.5 * (self.container.domain_end - self.container.domain_start)
-        region_half_size = np.array(region_half_size, dtype=np.float32)
-
-        self.sigmoid_region_center = ti.Vector.field(self.container.dim, dtype=ti.f32, shape=())
-        self.sigmoid_region_half_size = ti.Vector.field(self.container.dim, dtype=ti.f32, shape=())
-        self.sigmoid_region_center[None] = region_center[: self.container.dim]
-        self.sigmoid_region_half_size[None] = region_half_size[: self.container.dim]
 
         self.dt = ti.field(float, shape=())
         self.dt[None] = 1e-4
@@ -347,47 +322,35 @@ class BaseSolver():
         if self.thermal_conductivity > 0.0:
             self.update_fluid_temperature()
 
-        if self.sigmoid_temperature_profile_enabled:
-            self.apply_sigmoid_temperature_profile(self.container.total_time)
+        if self.sinusoidal_temperature_profile_enabled:
+            self.apply_sinusoidal_temperature_profile()
 
         if self.enable_vft_viscosity:
             self.update_particle_viscosity()
 
     @ti.kernel
-    def apply_sigmoid_temperature_profile(self, sim_time: ti.f32):
+    def apply_sinusoidal_temperature_profile(self):
         for p_i in range(self.container.particle_num[None]):
             if self.container.particle_materials[p_i] == self.container.material_fluid:
                 pos_i = self.container.particle_positions[p_i]
-
-                inside_region = 1
-                for d in ti.static(range(self.container.dim)):
-                    if ti.abs(pos_i[d] - self.sigmoid_region_center[None][d]) > self.sigmoid_region_half_size[None][d]:
-                        inside_region = 0
-
-                if inside_region == 1:
-                    active = 1.0
-                    if sim_time < self.sigmoid_start_time:
-                        active = 0.0
-                    if self.sigmoid_end_time >= self.sigmoid_start_time and sim_time > self.sigmoid_end_time:
-                        active = 0.0
-
-                    if active > 0.0 and self.sigmoid_ramp_time > 1e-8:
-                        ramp_in = ti.min(1.0, ti.max(0.0, (sim_time - self.sigmoid_start_time) / self.sigmoid_ramp_time))
-                        ramp_out = 1.0
-                        if self.sigmoid_end_time >= self.sigmoid_start_time:
-                            ramp_out = ti.min(1.0, ti.max(0.0, (self.sigmoid_end_time - sim_time) / self.sigmoid_ramp_time))
-                        active = active * ti.min(ramp_in, ramp_out)
-
-                    if active > 0.0:
-                        sigmoid_width = ti.max(self.sigmoid_width, 1e-6)
-                        sigma = 1.0 / (1.0 + ti.exp((pos_i[1] - self.sigmoid_center_y) / sigmoid_width))
-                        target_temperature = self.sigmoid_temperature_min + (
-                            self.sigmoid_temperature_max - self.sigmoid_temperature_min
-                        ) * sigma
-                        self.container.particle_temperatures[p_i] = (
-                            (1.0 - active) * self.container.particle_temperatures[p_i]
-                            + active * target_temperature
-                        )
+                y_in = pos_i[1]
+                
+                # Define heating region bounds (centerY ± width)
+                y_min = self.sinusoidal_center_y - self.sinusoidal_width
+                y_max = self.sinusoidal_center_y + self.sinusoidal_width
+                
+                # Check if particle is in the heating region vertically
+                if y_in >= y_min and y_in <= y_max:
+                    # Normalize y to [0, 1]
+                    y_normalized = (y_max - y_in) / (y_max - y_min + 1e-12)
+                    # Map to theta in [-π/2, π/2]
+                    theta = y_normalized * np.pi - 0.5 * np.pi
+                    # Sinusoidal interpolation: 0.5 + 0.5*sin(theta)
+                    sin_factor = 0.5 + 0.5 * ti.sin(theta)
+                    target_temperature = self.sinusoidal_temperature_min + (
+                        self.sinusoidal_temperature_max - self.sinusoidal_temperature_min
+                    ) * sin_factor
+                    self.container.particle_temperatures[p_i] = target_temperature
         
     @ti.kernel
     def compute_gravity_acceleration(self):

@@ -605,7 +605,7 @@ class BaseContainer:
     def _copy_to_vis_buffer_2d(self, obj_id: int):
         assert self.GGUI
         domain_size = ti.Vector([self.domain_size[0], self.domain_size[1]])
-        for i in range(self.particle_max_num):
+        for i in range(self.particle_num[None]):
             if self.particle_object_ids[i] == obj_id:
                 self.x_vis_buffer[i] = self.particle_positions[i] / domain_size
                 self.color_vis_buffer[i] = self.particle_colors[i] / 255.0
@@ -613,8 +613,7 @@ class BaseContainer:
     @ti.kernel
     def _copy_to_vis_buffer_3d(self, obj_id: int):
         assert self.GGUI
-        # FIXME: make it equal to actual particle num
-        for i in range(self.particle_max_num):
+        for i in range(self.particle_num[None]):
             if self.particle_object_ids[i] == obj_id:
                 self.x_vis_buffer[i] = self.particle_positions[i]
                 self.color_vis_buffer[i] = self.particle_colors[i] / 255.0

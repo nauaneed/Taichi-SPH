@@ -127,12 +127,19 @@ if __name__ == "__main__":
     parser.add_argument('--export_hdf5_xdmf',
                         action='store_true',
                         help='force enable HDF5 + XDMF export')
+    parser.add_argument('--headless',
+                        action='store_true',
+                        help='disable Taichi UI rendering (safe for server/non-display runs)')
     args = parser.parse_args()
     scene_path = args.scene_file
     config = SimConfig(scene_file_path=scene_path)
     scene_name = scene_path.split("/")[-1].split(".")[0]
 
     output_frames = config.get_cfg("exportFrame")
+    headless = bool(args.headless)
+    if headless and output_frames:
+        print("[Info] Headless mode enabled: raw frame image export disabled.")
+    output_frames = bool(output_frames) and (not headless)
 
     fps = config.get_cfg("fps")
     if fps == None:
@@ -160,19 +167,19 @@ if __name__ == "__main__":
 
     simulation_method = config.get_cfg("simulationMethod")
     if simulation_method == "dfsph":
-        container = DFSPHContainer(config, GGUI=True)
+        container = DFSPHContainer(config, GGUI=not headless)
         solver = DFSPHSolver(container)
     elif simulation_method == "wcsph":
-        container = WCSPHContainer(config, GGUI=True)
+        container = WCSPHContainer(config, GGUI=not headless)
         solver = WCSPHSolver(container)
     elif simulation_method == "pcisph":
-        container = PCISPHContainer(config, GGUI=True)
+        container = PCISPHContainer(config, GGUI=not headless)
         solver = PCISPHSolver(container)
     elif simulation_method == "iisph":
-        container = IISPHContainer(config, GGUI=True)
+        container = IISPHContainer(config, GGUI=not headless)
         solver = IISPHSolver(container)
     elif simulation_method == "pbf":
-        container = PBFContainer(config, GGUI=True)
+        container = PBFContainer(config, GGUI=not headless)
         solver = PBFSolver(container)
     else:
         raise NotImplementedError(f"Simulation method {simulation_method} not implemented")
@@ -182,18 +189,23 @@ if __name__ == "__main__":
     solver.prepare()
 
 
-    window = ti.ui.Window('SPH', (1024, 1024), show_window = False, vsync=False)
+    window = None
+    scene = None
+    camera = None
+    canvas = None
+    if not headless:
+        window = ti.ui.Window('SPH', (1024, 1024), show_window = False, vsync=False)
 
-    scene = ti.ui.Scene()
-    # feel free to adjust the position of the camera as needed
-    camera = ti.ui.Camera()
-    camera.position(5.5, 2.5, 4.0)
-    camera.up(0.0, 1.0, 0.0)
-    camera.lookat(-1.0, 0.0, 0.0)
-    camera.fov(70)
-    scene.set_camera(camera)
+        scene = ti.ui.Scene()
+        # feel free to adjust the position of the camera as needed
+        camera = ti.ui.Camera()
+        camera.position(5.5, 2.5, 4.0)
+        camera.up(0.0, 1.0, 0.0)
+        camera.lookat(-1.0, 0.0, 0.0)
+        camera.fov(70)
+        scene.set_camera(camera)
 
-    canvas = window.get_canvas()
+        canvas = window.get_canvas()
     radius = 0.002
     movement_speed = 0.02
     background_color = (0, 0, 0)  # 0xFFFFFF
@@ -228,20 +240,21 @@ if __name__ == "__main__":
     cnt = 0
     cnt_ply = 0
 
-    while window.running:
+    while True:
         solver.step()
-        container.copy_to_vis_buffer(invisible_objects=invisible_objects, dim=dim)
-        if container.dim == 2:
-            canvas.set_background_color(background_color)
-            canvas.circles(container.x_vis_buffer, radius=container.dx / 80.0, color=particle_color)
-        elif container.dim == 3:
-            scene.set_camera(camera)
+        if not headless:
+            container.copy_to_vis_buffer(invisible_objects=invisible_objects, dim=dim)
+            if container.dim == 2:
+                canvas.set_background_color(background_color)
+                canvas.circles(container.x_vis_buffer, radius=container.dx / 80.0, color=particle_color)
+            elif container.dim == 3:
+                scene.set_camera(camera)
 
-            scene.point_light((2.0, 2.0, 2.0), color=(1.0, 1.0, 1.0))
-            scene.particles(container.x_vis_buffer, radius=container.dx, per_vertex_color=container.color_vis_buffer)
+                scene.point_light((2.0, 2.0, 2.0), color=(1.0, 1.0, 1.0))
+                scene.particles(container.x_vis_buffer, radius=container.dx, per_vertex_color=container.color_vis_buffer)
 
-            scene.lines(box_anchors, indices=box_lines_indices, color = (0.99, 0.68, 0.28), width = 1.0)
-            canvas.scene(scene)
+                scene.lines(box_anchors, indices=box_lines_indices, color = (0.99, 0.68, 0.28), width = 1.0)
+                canvas.scene(scene)
     
         if output_frames:
             if cnt % output_interval == 0:
@@ -275,6 +288,8 @@ if __name__ == "__main__":
 
         cnt += 1
 
+        if (not headless) and (not window.running):
+            break
         if cnt >= total_rounds:
             break
 
